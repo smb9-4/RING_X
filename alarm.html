@@ -274,8 +274,6 @@
                 ringingSection.classList.remove('hidden');
                 settingControls.classList.add('hidden');
                 updateStopButtonText();
-
-                showMessage(`ALARM! You must press the 'STOP ALARM' button ${pressCountTarget} times to dismiss it and wake up!`);
             }
         }
 
@@ -303,8 +301,6 @@
                     // Update UI: Hide the stop section, show the setting controls
                     ringingSection.classList.add('hidden');
                     settingControls.classList.remove('hidden');
-                    
-                    showMessage("RING_X Challenge Complete! You are officially awake.");
                 }
 
             }

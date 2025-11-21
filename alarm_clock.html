@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RING_X Wake Up Alarm</title>
+    <!-- Load Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Custom font and body background */
+        @import url('https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@300;400;700&display=swap');
+        
+        body {
+            font-family: 'Chakra Petch', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+        }
+
+        .clock-display {
+            /* Futuristic Neon Glow Effect */
+            color: #1affc4;
+            text-shadow: 0 0 10px #1affc480, 0 0 20px #1affc450;
+        }
+        
+        .alarm-indicator {
+            animation: ring-pulse 0.5s infinite alternate;
+            box-shadow: 0 0 15px rgba(255, 60, 60, 0.7);
+        }
+
+        @keyframes ring-pulse {
+            from { transform: scale(1); opacity: 0.9; }
+            to { transform: scale(1.02); opacity: 1; }
+        }
+        
+        /* Style for the input fields */
+        input[type="number"], select {
+            border: none;
+            outline: none;
+            transition: all 0.3s;
+        }
+        input[type="number"]:focus, select:focus {
+            box-shadow: 0 0 0 3px rgba(26, 255, 196, 0.5); /* Neon focus ring */
+        }
+    </style>
+</head>
+<body class="flex items-center justify-center min-h-screen p-4 text-white">
+
+    <div class="w-full max-w-sm md:max-w-lg bg-gray-900 p-6 sm:p-8 rounded-2xl shadow-2xl border border-gray-700/50">
+        <h1 class="text-xl font-bold mb-8 text-center text-gray-300 uppercase tracking-widest">RING_X Alarm</h1>
+
+        <!-- Digital Clock Display -->
+        <div id="digital-clock" class="text-6xl md:text-8xl text-center mb-10 py-6 bg-gray-800/50 rounded-lg clock-display transition duration-300 border border-gray-700">
+            00:00:00
+        </div>
+
+        <!-- ALARM RINGING SECTION (Hidden normally, shown when ringing) -->
+        <div id="ringing-section" class="hidden p-6 mb-6 text-center rounded-xl bg-red-800/70 border-2 border-red-500 alarm-indicator">
+            <div id="alarm-message" class="text-2xl md:text-3xl font-bold text-red-100 mb-4 animate-bounce">
+                WAKE UP!
+            </div>
+            <!-- STOP ALARM button now uses the updated logic -->
+            <button onclick="stopAlarm()" id="stop-alarm-btn" class="w-full py-4 rounded-full text-xl font-bold text-gray-900 bg-red-300 hover:bg-red-400 transition-colors shadow-lg hover:shadow-red-500/50 focus:outline-none focus:ring-4 focus:ring-red-400">
+                STOP ALARM (Presses Remaining: X)
+            </button>
+        </div>
+        
+
+        <!-- Alarm Setting Controls (Hidden when ringing) -->
+        <div id="setting-controls" class="bg-gray-800 p-6 rounded-xl shadow-inner border border-gray-700">
+            <h2 class="text-lg font-semibold mb-4 text-cyan-400">Set Alarm Time</h2>
+
+            <div class="flex space-x-2 sm:space-x-4 mb-4">
+                <!-- Hour Input -->
+                <input type="number" id="alarm-hour" min="1" max="12" placeholder="HR" class="w-1/3 p-3 rounded-lg bg-gray-700 text-white placeholder-gray-400 text-center transition-colors focus:bg-gray-600">
+                
+                <!-- Minute Input -->
+                <input type="number" id="alarm-minute" min="0" max="59" placeholder="MIN" class="w-1/3 p-3 rounded-lg bg-gray-700 text-white placeholder-gray-400 text-center transition-colors focus:bg-gray-600">
+                
+                <!-- AM/PM Selector -->
+                <select id="alarm-ampm" class="w-1/3 p-3 rounded-lg bg-gray-700 text-white placeholder-gray-400 text-center transition-colors focus:bg-gray-600 cursor-pointer">
+                    <option value="AM">AM</option>
+                    <option value="PM">PM</option>
+                </select>
+            </div>
+
+            <div class="flex flex-col space-y-3">
+                <button onclick="setAlarm()" id="set-alarm-btn" class="w-full py-3 rounded-lg text-lg font-bold text-gray-900 bg-cyan-400 hover:bg-cyan-300 transition-colors shadow-md hover:shadow-cyan-500/50">
+                    SET ALARM
+                </button>
+                <button onclick="clearAlarm()" id="clear-alarm-btn" class="w-full py-3 rounded-lg text-sm font-semibold text-gray-300 bg-gray-700 hover:bg-gray-600 transition-colors border border-gray-600">
+                    Clear Set Time
+                </button>
+            </div>
+
+            <!-- Current Alarm Display -->
+            <p id="current-alarm-display" class="mt-5 text-center text-sm text-gray-400 font-mono">No alarm set.</p>
+        </div>
+        
+        <!-- Audio Element for Alarm Sound -->
+        <audio id="alarm-audio" loop></audio>
+
+        <!-- Message Box for user feedback (Modal) -->
+        <div id="message-box" class="fixed inset-0 bg-black bg-opacity-80 hidden items-center justify-center p-4 z-50 transition-opacity duration-300">
+            <div class="bg-gray-900 p-6 rounded-xl shadow-2xl max-w-sm w-full border border-cyan-400">
+                <p id="message-text" class="text-lg text-cyan-100 font-semibold mb-6 text-center"></p>
+                <button onclick="hideMessage()" class="w-full py-3 bg-cyan-400 text-gray-900 font-bold rounded-lg hover:bg-cyan-300 transition">Understood</button>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- Global Variables ---
+        let alarmTime = null;
+        let alarmIntervalId = null;
+        let alarmAudioContext = null;
+        let oscillatorNode = null;
+        
+        // RING_X LOGIC VARIABLES
+        let pressCountTarget = 0;
+        let currentPressCount = 0;
+
+        const clockDisplay = document.getElementById('digital-clock');
+        const ringingSection = document.getElementById('ringing-section');
+        const settingControls = document.getElementById('setting-controls');
+        const currentAlarmDisplay = document.getElementById('current-alarm-display');
+        const stopAlarmButton = document.getElementById('stop-alarm-btn');
+
+
+        // Helper function for custom message box (replacing alert())
+        function showMessage(text) {
+            document.getElementById('message-text').textContent = text;
+            document.getElementById('message-box').classList.remove('hidden');
+            document.getElementById('message-box').classList.add('flex');
+        }
+
+        function hideMessage() {
+            document.getElementById('message-box').classList.remove('flex');
+            document.getElementById('message-box').classList.add('hidden');
+        }
+
+        // --- Core Clock Function ---
+        function updateClock() {
+            const now = new Date();
+            let hours = now.getHours();
+            let minutes = now.getMinutes();
+            let seconds = now.getSeconds();
+            let ampm = hours >= 12 ? 'PM' : 'AM';
+
+            // Convert to 12-hour format
+            hours = hours % 12;
+            hours = hours ? hours : 12; // The hour '0' should be '12'
+
+            // Format numbers to always have two digits
+            const formattedHours = hours.toString().padStart(2, '0');
+            const formattedMinutes = minutes.toString().padStart(2, '0');
+            const formattedSeconds = seconds.toString().padStart(2, '0');
+
+            // Update the display
+            clockDisplay.textContent = `${formattedHours}:${formattedMinutes}:${formattedSeconds} ${ampm}`;
+
+            // Check for Alarm
+            if (alarmTime && ringingSection.classList.contains('hidden')) {
+                // Only check minutes/hours for alarm trigger
+                const checkTime = `${formattedHours}:${formattedMinutes} ${ampm}`;
+
+                // Trigger exactly when the time matches and seconds are zero
+                if (checkTime === alarmTime && seconds === 0) {
+                    triggerAlarm();
+                }
+            }
+        }
+
+        // --- Alarm Logic ---
+
+        // Function to start the audio tone
+        function startTone() {
+            // Check if tone is already running
+            if (oscillatorNode) return;
+
+            // Start AudioContext after user interaction for browser compatibility
+            if (!alarmAudioContext || alarmAudioContext.state === 'closed') {
+                alarmAudioContext = new (window.AudioContext || window.webkitAudioContext)();
+            }
+
+            oscillatorNode = alarmAudioContext.createOscillator();
+            const gainNode = alarmAudioContext.createGain();
+
+            oscillatorNode.connect(gainNode);
+            gainNode.connect(alarmAudioContext.destination);
+
+            // Setup the sound (a simple square wave at 550Hz for a harsher tone)
+            oscillatorNode.type = 'square';
+            oscillatorNode.frequency.setValueAtTime(550, alarmAudioContext.currentTime);
+            gainNode.gain.setValueAtTime(0, alarmAudioContext.currentTime); 
+            gainNode.gain.linearRampToValueAtTime(0.6, alarmAudioContext.currentTime + 0.1); // Fade in
+
+            // Start oscillator
+            oscillatorNode.start(0);
+        }
+
+        // Function to stop the audio tone
+        function stopTone() {
+            if (oscillatorNode) {
+                try {
+                    // Stop node and disconnect it
+                    oscillatorNode.stop(0);
+                    oscillatorNode.disconnect();
+                } catch (e) {
+                    // Ignore errors if stop was already called
+                }
+                oscillatorNode = null;
+            }
+            if (alarmAudioContext && alarmAudioContext.state !== 'closed') {
+                // Note: Closing the context stops all audio output
+                alarmAudioContext.close().catch(e => console.error("Error closing AudioContext:", e));
+                alarmAudioContext = null;
+            }
+        }
+
+        function setAlarm() {
+            const hourInput = document.getElementById('alarm-hour').value;
+            const minuteInput = document.getElementById('alarm-minute').value;
+            const ampm = document.getElementById('alarm-ampm').value;
+
+            // 1. Validation
+            const hour = parseInt(hourInput);
+            const minute = parseInt(minuteInput);
+
+            if (isNaN(hour) || isNaN(minute) || hour < 1 || hour > 12 || minute < 0 || minute > 59) {
+                showMessage("Please enter a valid hour (1-12) and minute (0-59).");
+                return;
+            }
+            
+            // Format time string (e.g., "07:30 AM")
+            const formattedHour = hour.toString().padStart(2, '0');
+            const formattedMinute = minute.toString().padStart(2, '0');
+            
+            alarmTime = `${formattedHour}:${formattedMinute} ${ampm}`;
+            
+            // 2. Update UI
+            currentAlarmDisplay.textContent = `Alarm set for: ${alarmTime}`;
+            showMessage(`Alarm successfully set for ${alarmTime}.`);
+
+            // Ensure the clock starts checking for the alarm
+            if (!alarmIntervalId) {
+                startClock();
+            }
+        }
+
+        // Clears the set alarm time
+        function clearAlarm() {
+            // Prevent clearing if the alarm is currently ringing
+            if (!ringingSection.classList.contains('hidden')) {
+                 showMessage("Please dismiss the ringing alarm (RING_X completed) before clearing the set time.");
+                 return;
+            }
+
+            alarmTime = null;
+            currentAlarmDisplay.textContent = "No alarm set.";
+            showMessage("Alarm time successfully cleared.");
+        }
+
+        function triggerAlarm() {
+            // Check if alarm is already ringing to prevent re-triggering within the same minute
+            if (ringingSection.classList.contains('hidden')) {
+                // 1. Set RING_X Logic: Randomly set target presses between 10 and 30 (inclusive)
+                pressCountTarget = Math.floor(Math.random() * (30 - 10 + 1)) + 10;
+                currentPressCount = pressCountTarget;
+                
+                // 2. Start Tone
+                startTone(); 
+
+                // 3. Update UI: Show the stop section, hide the setting controls
+                ringingSection.classList.remove('hidden');
+                settingControls.classList.add('hidden');
+                updateStopButtonText();
+
+                showMessage(`ALARM! You must press the 'STOP ALARM' button ${pressCountTarget} times to dismiss it and wake up!`);
+            }
+        }
+
+        function updateStopButtonText() {
+            stopAlarmButton.textContent = `DISMISS (${currentPressCount} Presses Left)`;
+        }
+
+        // Handles the repetitive button press logic
+        function stopAlarm() {
+            if (currentPressCount > 0) {
+                // Decrement count
+                currentPressCount--;
+                updateStopButtonText();
+                
+                // Visual feedback on press
+                stopAlarmButton.classList.add('scale-[1.05]');
+                setTimeout(() => {
+                    stopAlarmButton.classList.remove('scale-[1.05]');
+                }, 50);
+
+                if (currentPressCount === 0) {
+                    // Final press: Stop the alarm completely
+                    stopTone();
+
+                    // Update UI: Hide the stop section, show the setting controls
+                    ringingSection.classList.add('hidden');
+                    settingControls.classList.remove('hidden');
+                    
+                    showMessage("RING_X Challenge Complete! You are officially awake.");
+                }
+
+            }
+            // If currentPressCount was already 0, nothing happens on click, which is correct behavior.
+        }
+
+
+        // --- Initialization ---
+        function startClock() {
+            // Update immediately, then every second
+            updateClock();
+            alarmIntervalId = setInterval(updateClock, 1000);
+        }
+
+        // Start the clock when the page loads
+        window.onload = startClock;
+
+    </script>
+</body>
+</html>
